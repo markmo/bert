@@ -332,8 +332,6 @@ class CsvProcessor(DataProcessor):
     """Creates examples for the training and dev sets."""
     examples = []
     for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
       guid = "%s-%s" % (set_type, i)
       text_a = tokenization.convert_to_unicode(line[1])
       label = tokenization.convert_to_unicode(line[0])
