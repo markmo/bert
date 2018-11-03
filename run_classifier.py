@@ -21,6 +21,7 @@ from __future__ import print_function
 import csv
 import os
 import modeling
+import numpy as np
 import optimization
 import tokenization
 import tensorflow as tf
@@ -159,7 +160,7 @@ class DataProcessor(object):
     """Gets a collection of `InputExample`s for the dev set."""
     raise NotImplementedError()
 
-  def get_labels(self):
+  def get_labels(self, data_dir):
     """Gets the list of labels for this data set."""
     raise NotImplementedError()
 
@@ -168,6 +169,16 @@ class DataProcessor(object):
     """Reads a tab separated value file."""
     with tf.gfile.Open(input_file, "r") as f:
       reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
+      lines = []
+      for line in reader:
+        lines.append(line)
+      return lines
+
+  @classmethod
+  def _read_csv(cls, input_file, quotechar=None):
+    """Reads a tab separated value file."""
+    with tf.gfile.Open(input_file, "r") as f:
+      reader = csv.reader(f, quotechar=quotechar)
       lines = []
       for line in reader:
         lines.append(line)
@@ -188,7 +199,7 @@ class MnliProcessor(DataProcessor):
         self._read_tsv(os.path.join(data_dir, "dev_matched.tsv")),
         "dev_matched")
 
-  def get_labels(self):
+  def get_labels(self, data_dir):
     """See base class."""
     return ["contradiction", "entailment", "neutral"]
 
@@ -220,7 +231,7 @@ class MrpcProcessor(DataProcessor):
     return self._create_examples(
         self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
-  def get_labels(self):
+  def get_labels(self, data_dir):
     """See base class."""
     return ["0", "1"]
 
@@ -252,7 +263,7 @@ class ColaProcessor(DataProcessor):
     return self._create_examples(
         self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
-  def get_labels(self):
+  def get_labels(self, data_dir):
     """See base class."""
     return ["0", "1"]
 
@@ -281,7 +292,7 @@ class Sst2Processor(DataProcessor):
     return self._create_examples(
         self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
 
-  def get_labels(self):
+  def get_labels(self, data_dir):
     """See base class."""
     return ["0", "1"]
 
@@ -294,6 +305,38 @@ class Sst2Processor(DataProcessor):
       guid = "%s-%s" % (set_type, i)
       text_a = tokenization.convert_to_unicode(line[0])
       label = tokenization.convert_to_unicode(line[1])
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, label=label))
+    return examples
+
+
+class CsvProcessor(DataProcessor):
+  """Processor for the MRPC data set (GLUE version)."""
+
+  def get_train_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_csv(os.path.join(data_dir, "train.csv")), "train")
+
+  def get_dev_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_csv(os.path.join(data_dir, "val.csv")), "dev")
+
+  def get_labels(self, data_dir):
+    """See base class."""
+    classes = np.genfromtxt(os.path.join(data_dir, "classes.txt"), dtype=str)
+    return [str(x) for x in range(len(classes))]
+
+  def _create_examples(self, lines, set_type):
+    """Creates examples for the training and dev sets."""
+    examples = []
+    for (i, line) in enumerate(lines):
+      if i == 0:
+        continue
+      guid = "%s-%s" % (set_type, i)
+      text_a = tokenization.convert_to_unicode(line[1])
+      label = tokenization.convert_to_unicode(line[0])
       examples.append(
           InputExample(guid=guid, text_a=text_a, label=label))
     return examples
@@ -602,6 +645,7 @@ def main(_):
       "mnli": MnliProcessor,
       "mrpc": MrpcProcessor,
       "sst2": Sst2Processor,
+      "csv": CsvProcessor,
   }
 
   if not FLAGS.do_train and not FLAGS.do_eval:
@@ -624,7 +668,7 @@ def main(_):
 
   processor = processors[task_name]()
 
-  label_list = processor.get_labels()
+  label_list = processor.get_labels(FLAGS.data_dir)
 
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
