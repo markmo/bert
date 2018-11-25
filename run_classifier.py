@@ -323,6 +323,10 @@ class CsvProcessor(DataProcessor):
     return self._create_examples(
         self._read_csv(os.path.join(data_dir, "val.csv")), "dev")
 
+  def get_test_examples(self, data_dir):
+    return self._create_examples(
+        self._read_csv(os.path.join(data_dir, "test.csv")), "test")
+
   def get_labels(self, data_dir):
     """See base class."""
     classes = np.genfromtxt(os.path.join(data_dir, "classes.txt"), dtype=str)
@@ -413,11 +417,13 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
       input_mask.append(0)
       segment_ids.append(0)
 
+    tf.logging.debug('input_ids length:', len(input_ids))
+
     assert len(input_ids) == max_seq_length
     assert len(input_mask) == max_seq_length
     assert len(segment_ids) == max_seq_length
 
-    label_id = label_map[example.label]
+    label_id = label_map.get(example.label, None)
     if ex_index < 5:
       tf.logging.info("*** Example ***")
       tf.logging.info("guid: %s" % (example.guid))
@@ -427,7 +433,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
       tf.logging.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
       tf.logging.info(
           "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-      tf.logging.info("label: %s (id = %d)" % (example.label, label_id))
+      if label_id:
+        tf.logging.info("label: %s (id = %d)" % (example.label, label_id))
+      else:
+        tf.logging.info('No label')
 
     features.append(
         InputFeatures(
@@ -575,6 +584,11 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
           loss=total_loss,
           eval_metrics=eval_metrics,
           scaffold_fn=scaffold_fn)
+    elif mode == tf.estimator.ModeKeys.PREDICT:
+      predictions = tf.argmax(logits, axis=-1, output_type=tf.int32)
+      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
+          mode=mode,
+          predictions=predictions)
     else:
       raise ValueError("Only TRAIN and EVAL modes are supported: %s" % (mode))
 
@@ -595,13 +609,15 @@ def input_fn_builder(features, seq_length, is_training, drop_remainder):
     all_input_ids.append(feature.input_ids)
     all_input_mask.append(feature.input_mask)
     all_segment_ids.append(feature.segment_ids)
-    all_label_ids.append(feature.label_id)
+    all_label_ids.append(feature.label_id or -1)
 
   def input_fn(params):
     """The actual input function."""
     batch_size = params["batch_size"]
 
     num_examples = len(features)
+
+    tf.logging.debug('batch_size:', batch_size, 'num_examples:', num_examples)
 
     # This is for demo purposes and does NOT scale to large data sets. We do
     # not use Dataset.from_generator() because that uses tf.py_func which is

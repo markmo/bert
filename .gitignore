@@ -117,3 +117,6 @@ dmypy.json
 
 
 *output/
+*.tar
+*.lzma
+codiout*
